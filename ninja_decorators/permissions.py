@@ -8,7 +8,7 @@ from django.utils.module_loading import import_string
 from ninja.errors import HttpError
 
 from ninja_decorators.conf import settings
-from ninja_decorators.utils import get_request_argument
+from ninja_decorators.utils import get_argument
 
 User = get_user_model()
 
@@ -62,7 +62,7 @@ def requires_permission(
 
         @wraps(f)
         def decorated_function(*args: Any, **kwargs: Any) -> Any:
-            request = get_request_argument(f, args, kwargs)
+            request: HttpRequest = get_argument("request", f, args, kwargs)
             if not permissions_handler.has_permissions(request, permissions):
                 return permissions_handler.handle_missing_permissions(
                     request, permissions

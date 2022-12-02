@@ -1,38 +1,30 @@
 import inspect
 from typing import Any, Callable, Dict, Tuple, Type
 
-from django.http import HttpRequest
 from ninja import Schema
 from ninja.errors import ConfigError
 from ninja.params import Param
 
 
-def get_request_argument_index(func: Callable) -> int:
-    """Returns the index of the request argument in the function signature"""
+def get_argument_index(argument: str, func: Callable) -> int:
+    """Returns the index of the  argument in the function signature"""
     signature = inspect.signature(func)
     for index, (name, param) in enumerate(signature.parameters.items()):
-        if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD and name == "request":
+        if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD and name == argument:
             return index
-    raise ValueError(f"{func} is missing a request argument")
+    raise ValueError(f"{func} is missing a {argument} argument")
 
 
-def get_request_argument_value(
-    index: int, args: Tuple[Any], kwargs: Dict[str, Any]
-) -> HttpRequest:
-    """Returns the request argument value from the function arguments"""
-    if "request" in kwargs:
-        return kwargs["request"]
+def get_argument(
+    argument: str, func: Callable, args: Tuple[Any], kwargs: Dict[str, Any]
+) -> Any:
+    """Returns the request argument from the function arguments"""
+    if argument in kwargs:
+        return kwargs[argument]
+    index = get_argument_index(argument, func)
     if index < len(args):
         return args[index]
-    raise ValueError("Request argument not found")
-
-
-def get_request_argument(
-    func: Callable, args: Tuple[Any], kwargs: Dict[str, Any]
-) -> HttpRequest:
-    """Returns the request argument from the function arguments"""
-    index = get_request_argument_index(func)
-    return get_request_argument_value(index, args, kwargs)
+    raise ValueError(f"Argument {argument} not found")
 
 
 # TODO: Use built in ninja.signature.utils.inject_contribute_args when it's available  - see https://github.com/vitalik/django-ninja/pull/604
