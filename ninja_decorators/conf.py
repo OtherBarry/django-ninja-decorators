@@ -8,9 +8,9 @@ class Settings(BaseModel):
     # FILTER_CLASS: str = Field(
     #     "ninja_decorators.filtering.ORMFilter", alias="NINJA_DECORATORS_FILTER_CLASS"
     # )
-    # SORTING_CLASS: str = Field(
-    #     "ninja_decorators.sorting.ORMSorting", alias="NINJA_DECORATORS_SORTING_CLASS"
-    # )
+    SORTER_CLASS: str = Field(
+        "ninja_decorators.sorting.ORMSorting", alias="NINJA_DECORATORS_SORTING_CLASS"
+    )
     PERMISSIONS_CLASS: str = Field(
         "ninja_decorators.permissions.DjangoAuthPermissions",
         alias="NINJA_DECORATORS_PERMISSIONS_CLASS",
