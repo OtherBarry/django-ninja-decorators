@@ -18,11 +18,13 @@ class BasePermission(ABC):
         pass
 
     @abstractmethod
-    def has_permissions(self, request: HttpRequest, permissions: Tuple[str]) -> bool:
+    def has_permissions(
+        self, request: HttpRequest, permissions: Tuple[str, ...]
+    ) -> bool:
         pass
 
     def handle_missing_permissions(
-        self, request: HttpRequest, permissions: Tuple[str]
+        self, request: HttpRequest, permissions: Tuple[str, ...]
     ) -> Any:
         raise HttpError(
             status_code=403,
@@ -30,7 +32,7 @@ class BasePermission(ABC):
         )
 
     def update_docstring(
-        self, docstring: Optional[str], permissions: Tuple[str]
+        self, docstring: Optional[str], permissions: Tuple[str, ...]
     ) -> Optional[str]:
         return docstring
 
@@ -40,7 +42,7 @@ class DjangoAuthPermissions(BasePermission):
         user: User
 
     def has_permissions(
-        self, request: AuthenticatedHttpRequest, permissions: Tuple[str]
+        self, request: AuthenticatedHttpRequest, permissions: Tuple[str, ...]
     ) -> bool:
         return request.user.has_perms(permissions)
 
@@ -51,9 +53,7 @@ def requires_permission(
     **kwargs: Any,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     if permission_class is None:
-        permission_class: Type[BasePermission] = import_string(
-            settings.PERMISSIONS_CLASS
-        )
+        permission_class = import_string(settings.PERMISSIONS_CLASS)
     permissions_handler = permission_class(**kwargs)
 
     def decorator(f: Callable[..., Any]) -> Callable[..., Any]:

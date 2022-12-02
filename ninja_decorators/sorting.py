@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from functools import wraps
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Type, Union
 
 from django.db.models import QuerySet
 from django.utils.module_loading import import_string
@@ -20,6 +20,7 @@ class BaseSorter(ABC):
     SCHEMA_NAME = "Input"
     SCHEMA_PROPERTY = "sort"
     UNIQUE_ITEMS = True
+    SCHEMA_SUFFIX = "sort"
 
     def __init__(
         self,
@@ -37,7 +38,9 @@ class BaseSorter(ABC):
             else self.DEFAULT_PARAMETER_TYPE
         )
 
-    def generate_model(self, keys: Dict[str, str], default: List[str]) -> Type[Schema]:
+    def generate_model(
+        self, keys: Dict[str, str], default: List[str], function_name: str
+    ) -> Type[Schema]:
         definitions = {
             self.SCHEMA_PROPERTY: (
                 List[Literal[tuple(keys.keys())]],
@@ -47,7 +50,7 @@ class BaseSorter(ABC):
             )
         }
 
-        def _validator(cls, v):
+        def _validator(cls: Any, v: List[str]) -> List[str]:
             return self.validate_input(v, keys)
 
         validators = {
@@ -55,7 +58,14 @@ class BaseSorter(ABC):
                 self.SCHEMA_PROPERTY, allow_reuse=True
             )(_validator)
         }
-        return create_model(*definitions, __validators__=validators)
+        return create_model(
+            f"{function_name}_{self.SCHEMA_SUFFIX}",
+            __config__=None,
+            __base__=Schema,
+            __module__=Schema.__module__,
+            __validators__=validators,
+            **definitions,
+        )
 
     def validate_keys(self, keys: Dict[str, str]) -> Dict[str, str]:
         return keys
@@ -71,7 +81,7 @@ class BaseSorter(ABC):
 class ORMSorter(BaseSorter):
     DEFAULT_PARAMETER_NAME = "sort_by"
 
-    def __init__(self, *args, reversible: bool = True, **kwargs):
+    def __init__(self, *args: Any, reversible: bool = True, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.reversible = reversible
 
@@ -86,14 +96,14 @@ class ORMSorter(BaseSorter):
 
 def sortable(
     keys: Union[Iterable[str], Dict[str, str]],
-    default: Optional[Union[List[str], str]] = None,
+    default: Union[List[str], str, None] = None,
     sorter_class: Optional[Type[BaseSorter]] = None,
     **kwargs: Any,
 ) -> Callable[[Callable[[Any], QuerySet[Any]]], Callable[[Any], QuerySet[Any]]]:
     if not isinstance(keys, dict):
         keys = {field: field for field in keys}
     if sorter_class is None:
-        sorter_class: Type[BaseSorter] = import_string(settings.SORTER_CLASS)
+        sorter_class = import_string(settings.SORTER_CLASS)
     sorter = sorter_class(**kwargs)
     keys = sorter.validate_keys(keys)
     if default is None:
@@ -101,12 +111,14 @@ def sortable(
     elif isinstance(default, str):
         default = [default]
     default = sorter.validate_input(default, keys)
-    InputSchema = sorter.generate_model(keys, default)
 
     def wrapper(func: Callable[[Any], QuerySet[Any]]) -> Callable[[Any], QuerySet[Any]]:
+
+        schema = sorter.generate_model(keys, default, func.__name__)
+
         @wraps(func)
-        def view_with_sorting(*args: Tuple[Any], **kwargs: Any) -> Any:
-            data: InputSchema = kwargs.pop(sorter.KEYWORD_ARGUMENT_NAME)
+        def view_with_sorting(*args: Any, **kwargs: Any) -> Any:
+            data = kwargs.pop(sorter.KEYWORD_ARGUMENT_NAME)
             sort_list = [keys[field] for field in getattr(data, sorter.SCHEMA_PROPERTY)]
             queryset = func(*args, **kwargs)
             return sorter.sort_queryset(queryset, sort_list)
@@ -114,7 +126,7 @@ def sortable(
         inject_contribute_args(
             view_with_sorting,
             sorter.KEYWORD_ARGUMENT_NAME,
-            InputSchema,
+            schema,
             sorter.parameter_type(default),
         )
         return view_with_sorting

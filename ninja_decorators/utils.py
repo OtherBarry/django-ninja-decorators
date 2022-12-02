@@ -6,7 +6,7 @@ from ninja.errors import ConfigError
 from ninja.params import Param
 
 
-def get_argument_index(argument: str, func: Callable) -> int:
+def get_argument_index(argument: str, func: Callable[[Any], Any]) -> int:
     """Returns the index of the  argument in the function signature"""
     signature = inspect.signature(func)
     for index, (name, param) in enumerate(signature.parameters.items()):
@@ -16,7 +16,10 @@ def get_argument_index(argument: str, func: Callable) -> int:
 
 
 def get_argument(
-    argument: str, func: Callable, args: Tuple[Any], kwargs: Dict[str, Any]
+    argument: str,
+    func: Callable[[Any], Any],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
 ) -> Any:
     """Returns the request argument from the function arguments"""
     if argument in kwargs:
