@@ -1,51 +1,75 @@
+from abc import ABC, abstractmethod
 from functools import wraps
-from inspect import getfullargspec
-from typing import Any, Callable
+from typing import Any, Callable, Optional, Tuple, Type
 
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest
+from django.utils.module_loading import import_string
 from ninja.errors import HttpError
+
+from ninja_decorators.conf import settings
+from ninja_decorators.utils import get_request_argument
 
 User = get_user_model()
 
 
-# TODO: Implement permissions logic using a class, like ninja pagination
+class BasePermission(ABC):
+    def __init__(self, **kwargs: Any) -> None:
+        pass
+
+    @abstractmethod
+    def has_permissions(self, request: HttpRequest, permissions: Tuple[str]) -> bool:
+        pass
+
+    def handle_missing_permissions(
+        self, request: HttpRequest, permissions: Tuple[str]
+    ) -> Any:
+        raise HttpError(
+            status_code=403,
+            message=f"User does not have sufficient permissions. Required permissions are {', '.join(permissions)}.",
+        )
+
+    def update_docstring(
+        self, docstring: Optional[str], permissions: Tuple[str]
+    ) -> Optional[str]:
+        return docstring
 
 
-class AuthenticatedHttpRequest(HttpRequest):
-    user: User
+class DjangoAuthPermissions(BasePermission):
+    class AuthenticatedHttpRequest(HttpRequest):
+        user: User
+
+    def has_permissions(
+        self, request: AuthenticatedHttpRequest, permissions: Tuple[str]
+    ) -> bool:
+        return request.user.has_perms(permissions)
 
 
 def requires_permission(
     *permissions: str,
+    permission_class: Optional[Type[BasePermission]] = None,
+    **kwargs: Any,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    if permission_class is None:
+        permission_class: Type[BasePermission] = import_string(
+            settings.PERMISSIONS_CLASS
+        )
+    permissions_handler = permission_class(**kwargs)
+
     def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         if len(permissions) == 0:
             return f  # Short circuit if no permissions are required.
 
-        try:
-            request_index = getfullargspec(f).args.index("request")
-        except ValueError:
-            request_index = 0  # TODO: Find more reliable solution.
-
         @wraps(f)
         def decorated_function(*args: Any, **kwargs: Any) -> Any:
-            try:
-                request: AuthenticatedHttpRequest = args[request_index]
-            except IndexError:
-                request = kwargs["request"]
-            if not request.user.has_perms(permissions):
-                raise HttpError(
-                    status_code=403,
-                    message=f"User does not have sufficient permissions. Required permissions are {', '.join(permissions)}.",
+            request = get_request_argument(f, args, kwargs)
+            if not permissions_handler.has_permissions(request, permissions):
+                return permissions_handler.handle_missing_permissions(
+                    request, permissions
                 )
             return f(*args, **kwargs)
 
-        if decorated_function.__doc__ is not None:
-            decorated_function.__doc__ += (
-                f"\nRequires permissions `{', '.join(permissions)}`."
-            )
-
+        permissions_handler.update_docstring(decorated_function.__doc__, permissions)
         return decorated_function
 
     return decorator
